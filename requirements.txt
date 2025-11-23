@@ -1,0 +1,13 @@
+# Sysinternals GUI 工具
+# 本项目使用Python标准库，无需额外依赖
+
+# Python 3.6+ 自带的标准库：
+# - tkinter (GUI框架)
+# - subprocess (执行外部命令)
+# - threading (多线程支持)
+
+# 注意：在Windows系统上，tkinter通常已随Python安装
+# 如果tkinter不可用，请重新安装Python并确保勾选tcl/tk选项
+
+
+
