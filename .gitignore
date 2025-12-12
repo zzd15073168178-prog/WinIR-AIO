@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.vs/
+
+# Logs and dumps
+*.log
+*.dmp
+dumps/*.dmp
+procmon_logs/*.PML
+reports/*.html
+reports/*.json
+
+# Temporary files
+*.tmp
+*.temp
+temp_*.txt
+nul
+
+# Build artifacts
+*.spec
+SysmonGUI.spec
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Backup folders
+backup_*/
+
+# Test files
+test_*.py
