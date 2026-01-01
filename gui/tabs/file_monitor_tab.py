@@ -17,14 +17,16 @@ class FileMonitorTab(BaseTab):
     """文件监控标签页"""
 
     def __init__(self, parent, manager, output_window):
-        super().__init__(parent, manager, output_window)
+        # 先初始化自己的属性（在调用父类之前，因为父类会调用 setup_ui）
+        self.output_window = output_window
         self.monitoring = False
         self.monitor_thread = None
         self.previous_files = {}
         self.created_count = 0
         self.modified_count = 0
         self.deleted_count = 0
-        self.setup_ui()
+        # 调用父类构造函数（会自动调用 setup_ui）
+        super().__init__(parent, manager, "📁 文件监控")
 
     def setup_ui(self):
         """设置界面"""
@@ -47,6 +49,15 @@ class FileMonitorTab(BaseTab):
         ttk.Label(toolbar, text="间隔(秒):").pack(side=tk.LEFT, padx=(10, 2))
         self.interval_var = tk.StringVar(value="1.0")
         ttk.Entry(toolbar, textvariable=self.interval_var, width=5).pack(side=tk.LEFT, padx=2)
+
+        # 是否查找进程（耗时操作）
+        self.find_process_var = tk.BooleanVar(value=False)
+        process_cb = ttk.Checkbutton(toolbar, text="查找进程(慢)", variable=self.find_process_var)
+        process_cb.pack(side=tk.LEFT, padx=10)
+
+        # 添加工具提示
+        self._create_tooltip(process_cb, "只能检测当前正在打开文件的进程。\n"
+                                         "要追踪文件创建者，请使用 Procmon 监控。")
 
         # 控制按钮
         self.start_btn = ttk.Button(toolbar, text="开始监控", command=self._toggle_monitor, width=10)
@@ -144,8 +155,8 @@ class FileMonitorTab(BaseTab):
 
         # 记录初始文件状态
         self.previous_files = self._get_files(watch_path, self.recursive_var.get())
-        self.log(f"开始监控: {watch_path}")
-        self.log(f"初始文件数: {len(self.previous_files)}")
+        self._log(f"📁 开始监控: {watch_path}")
+        self._log(f"📊 初始文件数: {len(self.previous_files)}")
 
         # 启动监控线程
         self.monitor_thread = threading.Thread(
@@ -160,7 +171,7 @@ class FileMonitorTab(BaseTab):
         self.monitoring = False
         self.start_btn.config(text="开始监控")
         self.status_label.config(text="状态: 已停止")
-        self.log(f"监控已停止 - 新建: {self.created_count}, 修改: {self.modified_count}, 删除: {self.deleted_count}")
+        self._log(f"⏹ 监控已停止 - 新建: {self.created_count}, 修改: {self.modified_count}, 删除: {self.deleted_count}")
 
     def _get_files(self, path, recursive=False):
         """获取文件列表及状态"""
@@ -184,6 +195,8 @@ class FileMonitorTab(BaseTab):
 
     def _monitor_loop(self, watch_path, interval):
         """监控循环"""
+        find_process = self.find_process_var.get()  # 获取一次，避免在循环中频繁访问
+
         while self.monitoring:
             time.sleep(interval)
             if not self.monitoring:
@@ -195,12 +208,12 @@ class FileMonitorTab(BaseTab):
             for filepath, info in current_files.items():
                 if filepath not in self.previous_files:
                     self.created_count += 1
-                    process_name = self._find_process_for_file(filepath)
+                    process_name = self._find_process_for_file(filepath) if find_process else "-"
                     self._add_event('新建', filepath, info['size'], process_name, 'created')
 
                 elif info['mtime'] != self.previous_files[filepath]['mtime']:
                     self.modified_count += 1
-                    process_name = self._find_process_for_file(filepath)
+                    process_name = self._find_process_for_file(filepath) if find_process else "-"
                     self._add_event('修改', filepath, info['size'], process_name, 'modified')
 
             # 检测删除的文件
@@ -215,18 +228,36 @@ class FileMonitorTab(BaseTab):
             self.parent.after(0, self._update_stats)
 
     def _find_process_for_file(self, filepath):
-        """尝试找到打开文件的进程"""
+        """尝试找到打开/操作文件的进程
+
+        注意：这个方法只能找到当前正在打开文件的进程。
+        如果文件已经被创建并关闭（如资源管理器复制），则无法找到创建者。
+        要追踪文件创建者，需要使用 Procmon 或 ETW。
+        """
         try:
             import psutil
+
+            # 方法1：检查当前打开文件的进程
             for proc in psutil.process_iter(['pid', 'name', 'open_files']):
                 try:
                     open_files = proc.info.get('open_files') or []
                     for f in open_files:
                         if filepath.lower() in f.path.lower():
                             return f"{proc.info['name']} ({proc.info['pid']})"
-                except:
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     pass
-        except:
+
+            # 方法2：检查最近访问该目录的进程（不太准确，但可能有用）
+            file_dir = os.path.dirname(filepath)
+            for proc in psutil.process_iter(['pid', 'name', 'cwd']):
+                try:
+                    cwd = proc.info.get('cwd')
+                    if cwd and os.path.normpath(cwd).lower() == os.path.normpath(file_dir).lower():
+                        return f"{proc.info['name']} ({proc.info['pid']}) [工作目录]"
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+
+        except Exception:
             pass
         return "-"
 
@@ -244,7 +275,7 @@ class FileMonitorTab(BaseTab):
                     self.tree.delete(item)
 
         self.parent.after(0, insert)
-        self.log(f"[{event_type}] {filepath}")
+        self._log(f"[{event_type}] {filepath}")
 
     def _update_stats(self):
         """更新统计信息"""
@@ -332,4 +363,38 @@ class FileMonitorTab(BaseTab):
         if filepath:
             self.parent.clipboard_clear()
             self.parent.clipboard_append(filepath)
-            self.log(f"已复制路径: {filepath}")
+            self._log(f"📋 已复制路径: {filepath}")
+
+    def _log(self, message):
+        """输出日志到 output_window"""
+        if self.output_window and hasattr(self.output_window, 'log'):
+            self.output_window.log(message)
+        else:
+            print(message)
+
+    def _create_tooltip(self, widget, text):
+        """创建鼠标悬停提示"""
+        tooltip = None
+
+        def show_tooltip(event):
+            nonlocal tooltip
+            x, y, _, _ = widget.bbox("insert") if hasattr(widget, 'bbox') else (0, 0, 0, 0)
+            x += widget.winfo_rootx() + 25
+            y += widget.winfo_rooty() + 25
+
+            tooltip = tk.Toplevel(widget)
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{x}+{y}")
+
+            label = ttk.Label(tooltip, text=text, background="#ffffe0",
+                             relief="solid", borderwidth=1, padding=5)
+            label.pack()
+
+        def hide_tooltip(event):
+            nonlocal tooltip
+            if tooltip:
+                tooltip.destroy()
+                tooltip = None
+
+        widget.bind("<Enter>", show_tooltip)
+        widget.bind("<Leave>", hide_tooltip)

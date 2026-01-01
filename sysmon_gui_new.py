@@ -52,14 +52,25 @@ def check_ttkbootstrap_available():
 def run_full_gui():
     """运行完整版 GUI (ttkbootstrap)"""
     from console_logger import log_separator, log_info
-    import tkinter as tk
-    from gui.main_window import SysmonGUI
 
     log_info("启动完整版 GUI (ttkbootstrap)...")
     log_separator("Starting GUI")
 
-    root = tk.Tk()
+    log_info("Step 1: Importing ttkbootstrap...")
+    import ttkbootstrap as ttk
+    log_info("Step 1: OK")
+
+    log_info("Step 2: Creating Window...")
+    root = ttk.Window(themename='litera')
+    log_info("Step 2: OK")
+
+    log_info("Step 3: Importing SysmonGUI...")
+    from gui.main_window import SysmonGUI
+    log_info("Step 3: OK")
+
+    log_info("Step 4: Creating SysmonGUI instance...")
     app = SysmonGUI(root)
+    log_info("Step 4: OK")
 
     log_info("Application running...")
     print("-" * 60)

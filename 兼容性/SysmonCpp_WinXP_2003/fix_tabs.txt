@@ -1,0 +1,24 @@
+在 main_window.cpp 的 CreateTabs() 函数中，找到：
+
+void MainWindow::CreateTabs()
+{
+    // 获取 Tab 控件的显示区域
+    RECT rcTab;
+    GetClientRect(m_hTabCtrl, &rcTab);
+    TabCtrl_AdjustRect(m_hTabCtrl, FALSE, &rcTab);
+
+替换为：
+
+void MainWindow::CreateTabs()
+{
+    // 获取 Tab 控件的显示区域
+    RECT rcTab;
+    GetClientRect(m_hTabCtrl, &rcTab);
+
+    // 重要：TabCtrl_AdjustRect 计算内容区域（排除标签头）
+    TabCtrl_AdjustRect(m_hTabCtrl, FALSE, &rcTab);
+
+    // 安全检查：确保 top 至少有 25 像素给 Tab 标签头
+    if (rcTab.top < 25) {
+        rcTab.top = 25;
+    }

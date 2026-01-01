@@ -38,7 +38,7 @@ env/
 *.log
 *.dmp
 dumps/*.dmp
-procmon_logs/*.PML
+procmon_logs/
 reports/*.html
 reports/*.json
 
@@ -50,7 +50,26 @@ nul
 
 # Build artifacts
 *.spec
-SysmonGUI.spec
+
+# C++ Build artifacts
+*.obj
+*.lib
+*.pdb
+*.iobj
+*.ipdb
+*.tlog/
+*.lastbuildstate
+*.FileListAbsolute.txt
+*.recipe
+**/x64/
+**/bin/
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Claude settings
+.claude/
 
 # OS files
 .DS_Store
@@ -59,6 +78,7 @@ desktop.ini
 
 # Backup folders
 backup_*/
+bak/
 
 # Test files
 test_*.py

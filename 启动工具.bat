@@ -24,7 +24,7 @@ echo.
 echo Starting GUI application...
 echo.
 
-python sysinternals_gui.py
+python sysmon_gui_new.py
 
 if %errorlevel% neq 0 (
     echo.

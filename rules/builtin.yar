@@ -200,7 +200,7 @@ rule Suspicious_Network_Indicators {
         $port3 = ":1234" ascii wide
         $port4 = ":31337" ascii wide
     condition:
-        (3 of ($socket*) and any of ($port*)) or (2 of ($http*)) or any of ($port*)
+        (3 of ($socket*) and any of ($port*)) or (2 of ($http*)) or any of ($port*) or any of ($dns*)
 }
 
 rule Process_Injection_Indicators {

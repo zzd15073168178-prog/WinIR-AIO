@@ -36,7 +36,7 @@ echo.
 
 cd /d "%~dp0"
 
-python sysinternals_gui.py
+python sysmon_gui_new.py
 
 if %errorlevel% neq 0 (
     echo.

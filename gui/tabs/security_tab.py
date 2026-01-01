@@ -72,6 +72,35 @@ class SecurityTab(BaseTab):
         search_entry = ttk.Entry(cat_frame, textvariable=self.search_var, width=30)
         search_entry.pack(side=tk.LEFT, padx=5)
         self.search_var.trace('w', lambda *a: self.refresh_display())
+
+        # 进度条区域
+        progress_frame = ttk.LabelFrame(self.frame, text="扫描进度", padding=5)
+        progress_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行：进度条
+        progress_row1 = ttk.Frame(progress_frame)
+        progress_row1.pack(fill=tk.X, pady=(0, 3))
+
+        self.progress_var = tk.DoubleVar(value=0)
+        self.progress_bar = ttk.Progressbar(progress_row1, variable=self.progress_var,
+                                            maximum=100, mode='determinate', length=400)
+        self.progress_bar.pack(fill=tk.X, side=tk.LEFT, expand=True, padx=(0, 10))
+
+        # 百分比/状态标签
+        self.percent_label = ttk.Label(progress_row1, text="0%", font=('Consolas', 10, 'bold'), width=6)
+        self.percent_label.pack(side=tk.RIGHT)
+
+        # 第二行：当前扫描状态
+        progress_row2 = ttk.Frame(progress_frame)
+        progress_row2.pack(fill=tk.X)
+
+        ttk.Label(progress_row2, text="状态:", foreground='#666').pack(side=tk.LEFT)
+        self.progress_status_label = ttk.Label(progress_row2, text="就绪", foreground='#333')
+        self.progress_status_label.pack(side=tk.LEFT, padx=5)
+
+        # 扫描阶段
+        self.scan_phase_label = ttk.Label(progress_row2, text="", foreground='#666')
+        self.scan_phase_label.pack(side=tk.RIGHT)
         
         # 列表区域
         list_frame = ttk.Frame(self.frame)
@@ -204,13 +233,57 @@ class SecurityTab(BaseTab):
         preset_info = self.manager.SCAN_PRESETS.get(preset, {})
         preset_name = preset_info.get('name', '扫描')
 
+        # 重置进度条
+        self.progress_var.set(0)
+        self.percent_label.configure(text="0%")
+        self.progress_status_label.configure(text="正在启动扫描...")
+        self.scan_phase_label.configure(text="")
+
         self.status_label.configure(text=f"状态: 正在{preset_name}...")
         self.log(f"🔍 开始 {preset_name}...", self.output_widget)
 
+        # 扫描阶段映射（根据 Autoruns 扫描的典型顺序）
+        scan_phases = {
+            'Logon': ('登录项', 10),
+            'Explorer': ('Explorer 插件', 20),
+            'Internet Explorer': ('IE 插件', 25),
+            'Scheduled Tasks': ('计划任务', 35),
+            'Services': ('服务', 50),
+            'Drivers': ('驱动程序', 65),
+            'Codecs': ('编解码器', 70),
+            'Boot Execute': ('启动执行', 75),
+            'Image Hijacks': ('映像劫持', 80),
+            'AppInit': ('AppInit DLL', 85),
+            'KnownDLLs': ('已知 DLL', 88),
+            'Winlogon': ('Winlogon', 90),
+            'Winsock Providers': ('Winsock', 92),
+            'Print Monitors': ('打印监视器', 94),
+            'LSA Providers': ('LSA 提供程序', 96),
+            'Network Providers': ('网络提供程序', 98),
+        }
+
         def scan():
             try:
+                current_phase = [0]  # 使用列表以便在闭包中修改
+                items_found = [0]
+
                 def callback(msg):
                     try:
+                        # 解析消息判断当前阶段
+                        for phase_key, (phase_name, progress) in scan_phases.items():
+                            if phase_key.lower() in msg.lower():
+                                if progress > current_phase[0]:
+                                    current_phase[0] = progress
+                                    self.frame.after(0, lambda p=progress, n=phase_name: self._update_scan_progress(p, n))
+                                break
+
+                        # 计数已发现项目
+                        if 'Entry Location' in msg or '\\' in msg:
+                            items_found[0] += 1
+                            if items_found[0] % 20 == 0:  # 每20个项目更新一次
+                                self.frame.after(0, lambda c=items_found[0]:
+                                    self.scan_phase_label.configure(text=f"已发现: {c} 项"))
+
                         self.frame.after(0, lambda m=msg: self.log(f"  {m}", self.output_widget))
                     except:
                         pass
@@ -224,14 +297,34 @@ class SecurityTab(BaseTab):
             except Exception as e:
                 try:
                     self.frame.after(0, lambda err=str(e): self.log(f"❌ 扫描失败: {err}", self.output_widget))
+                    self.frame.after(0, lambda: self._reset_progress())
                 except:
                     pass
 
         threading.Thread(target=scan, daemon=True).start()
+
+    def _update_scan_progress(self, progress, phase_name):
+        """更新扫描进度"""
+        self.progress_var.set(progress)
+        self.percent_label.configure(text=f"{progress}%")
+        self.progress_status_label.configure(text=f"正在扫描: {phase_name}")
+
+    def _reset_progress(self):
+        """重置进度条"""
+        self.progress_var.set(0)
+        self.percent_label.configure(text="0%")
+        self.progress_status_label.configure(text="就绪")
+        self.scan_phase_label.configure(text="")
     
     def _scan_complete(self):
         """扫描完成"""
+        # 完成进度条
+        self.progress_var.set(100)
+        self.percent_label.configure(text="100%")
+        self.progress_status_label.configure(text="扫描完成")
+
         summary = self.manager.get_summary()
+        self.scan_phase_label.configure(text=f"共 {summary['total']} 项")
         
         self.log(f"🔒 Autoruns 扫描完成!", self.output_widget)
         self.log(f"  📊 总计: {summary['total']} 项", self.output_widget)

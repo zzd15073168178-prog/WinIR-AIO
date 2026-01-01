@@ -19,7 +19,6 @@ from network_manager import NetworkManager
 from dll_manager import DLLManager
 from handle_manager import HandleManager
 from dump_manager import DumpManager
-from monitor_manager import MonitorManager
 from security_manager import SecurityManager
 from hash_manager import HashManager
 from file_locker import FileLocker
@@ -27,11 +26,13 @@ from memory_scanner import MemoryScanner
 from yara_scanner import YaraScanner
 from process_history_manager import ProcessHistoryManager
 from eventlog_manager import EventLogManager
-from persistence import PersistenceDetector
 from user_audit_manager import UserAuditManager
-from sandbox_manager import SandboxManager
 
-from .tabs import ProcessTab, ProcessTreeTab, NetworkTab, DllTab, HandleTab, DumpTab, ProcmonTab, SecurityTab, HashTab, FileLockerTab, MemoryScannerTab, YaraTab, ProcessTraceTab, EventLogTab, PersistenceTab, UserAuditTab, SandboxTab, FileMonitorTab
+# 已剥离到 sandbox_project: MonitorManager, PersistenceDetector, SandboxManager
+
+from .tabs import ProcessTab, ProcessTreeTab, NetworkTab, DllTab, HandleTab, DumpTab, SecurityTab, HashTab, FileLockerTab, MemoryScannerTab, YaraTab, ProcessTraceTab, EventLogTab, UserAuditTab
+
+# 已剥离到 sandbox_project: ProcmonTab, PersistenceTab, SandboxTab, FileMonitorTab
 
 
 class OutputWindow:
@@ -172,8 +173,9 @@ class SysmonGUI:
     def __init__(self, root):
         self.root = root
 
-        # 应用 ttkbootstrap 主题（朴素浅色风格）
-        self.style = ttk.Style(theme='litera')
+        # ttkbootstrap 主题已经在 sysmon_gui_new.py 中通过 ttk.Window(themename='litera') 设置
+        # 这里只获取 style 对象以便后续使用
+        self.style = ttk.Style()
 
         self.root.title("Sysinternals 工具集 - 系统监控")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
@@ -199,15 +201,12 @@ class SysmonGUI:
         self.dll_manager = DLLManager()
         self.handle_manager = HandleManager()
         self.dump_manager = DumpManager()
-        self.monitor_manager = MonitorManager()
         self.security_manager = SecurityManager()
         self.hash_manager = HashManager()
         self.file_locker = FileLocker()
         self.process_history_manager = ProcessHistoryManager()
         self.eventlog_manager = EventLogManager()
-        self.persistence_detector = PersistenceDetector()
         self.user_audit_manager = UserAuditManager()
-        self.sandbox_manager = SandboxManager()
         self.debug_console.debug("所有轻量级管理器已初始化", "Main")
 
         # 延迟初始化重量级管理器（涉及 ctypes DLL 加载）
@@ -275,14 +274,13 @@ class SysmonGUI:
     def setup_tabs(self):
         """设置选项卡"""
         self.debug_console.debug("创建选项卡 Frames...", "Tabs")
-        # 创建各个 tab frame
+        # 创建各个 tab frame (已剥离: procmon, persistence, sandbox, file_monitor)
         self.tab_process = ttk.Frame(self.tabview)
         self.tab_tree = ttk.Frame(self.tabview)
         self.tab_network = ttk.Frame(self.tabview)
         self.tab_dll = ttk.Frame(self.tabview)
         self.tab_handle = ttk.Frame(self.tabview)
         self.tab_dump = ttk.Frame(self.tabview)
-        self.tab_procmon = ttk.Frame(self.tabview)
         self.tab_security = ttk.Frame(self.tabview)
         self.tab_hash = ttk.Frame(self.tabview)
         self.tab_locker = ttk.Frame(self.tabview)
@@ -290,10 +288,7 @@ class SysmonGUI:
         self.tab_yara = ttk.Frame(self.tabview)
         self.tab_trace = ttk.Frame(self.tabview)
         self.tab_eventlog = ttk.Frame(self.tabview)
-        self.tab_persistence = ttk.Frame(self.tabview)
         self.tab_user_audit = ttk.Frame(self.tabview)
-        self.tab_sandbox = ttk.Frame(self.tabview)
-        self.tab_file_monitor = ttk.Frame(self.tabview)
 
         self.tabview.add(self.tab_process, text="进程列表")
         self.tabview.add(self.tab_tree, text="进程树")
@@ -301,7 +296,6 @@ class SysmonGUI:
         self.tabview.add(self.tab_dll, text="DLL检测")
         self.tabview.add(self.tab_handle, text="句柄查询")
         self.tabview.add(self.tab_dump, text="进程转储")
-        self.tabview.add(self.tab_procmon, text="Procmon监控")
         self.tabview.add(self.tab_security, text="安全分析")
         self.tabview.add(self.tab_hash, text="Hash计算")
         self.tabview.add(self.tab_locker, text="文件解锁")
@@ -309,10 +303,7 @@ class SysmonGUI:
         self.tabview.add(self.tab_yara, text="Yara扫描")
         self.tabview.add(self.tab_trace, text="进程溯源")
         self.tabview.add(self.tab_eventlog, text="事件日志")
-        self.tabview.add(self.tab_persistence, text="持久化检测")
         self.tabview.add(self.tab_user_audit, text="用户审计")
-        self.tabview.add(self.tab_sandbox, text="行为沙箱")
-        self.tabview.add(self.tab_file_monitor, text="文件监控")
 
         # 初始化各个 Tab 类（传递 output_window 作为日志输出）
         self.debug_console.debug("初始化 Tab 类...", "Tabs")
@@ -329,18 +320,14 @@ class SysmonGUI:
         self.dll_tab = DllTab(self.tab_dll, self.dll_manager, self.output_window)
         self.handle_tab = HandleTab(self.tab_handle, self.handle_manager, self.output_window)
         self.dump_tab = DumpTab(self.tab_dump, self.dump_manager, self.output_window)
-        self.procmon_tab = ProcmonTab(self.tab_procmon, self.monitor_manager, self.output_window)
         self.security_tab = SecurityTab(self.tab_security, self.security_manager, self.output_window)
         self.hash_tab = HashTab(self.tab_hash, self.hash_manager, self.output_window)
         self.file_locker_tab = FileLockerTab(self.tab_locker, self.file_locker, self.output_window)
         self.process_trace_tab = ProcessTraceTab(self.tab_trace, self.process_history_manager, self.output_window)
         self.eventlog_tab = EventLogTab(self.tab_eventlog, self.eventlog_manager, self.output_window)
-        self.persistence_tab = PersistenceTab(self.tab_persistence, self.persistence_detector, self.output_window)
         self.user_audit_tab = UserAuditTab(self.tab_user_audit, self.user_audit_manager, self.output_window)
-        self.sandbox_tab = SandboxTab(self.tab_sandbox, self.sandbox_manager, self.output_window)
-        self.file_monitor_tab = FileMonitorTab(self.tab_file_monitor, None, self.output_window)
 
-        self.debug_console.info("所有 Tab 初始化完成 (共18个)", "Tabs")
+        self.debug_console.info("所有 Tab 初始化完成 (共14个)", "Tabs")
         # 延迟初始化的 Tab（使用占位符管理器）
         self.memory_scanner_tab = None
         self.yara_tab = None
@@ -402,7 +389,8 @@ class SysmonGUI:
             self.admin_label.config(text="✅ 管理员", foreground='green')
 
 def main():
-    root = tk.Tk()
+    import ttkbootstrap as ttk
+    root = ttk.Window(themename='litera')
     app = SysmonGUI(root)
     root.mainloop()
 

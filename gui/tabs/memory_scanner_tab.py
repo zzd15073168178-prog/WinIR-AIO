@@ -6,6 +6,12 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 import psutil
+import sys
+import os
+
+# 添加父目录到路径以导入 memory_scanner_v2
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from memory_scanner_v2 import MemoryScannerV2, ScanResultV2
 
 from .base_tab import BaseTab
 
@@ -47,6 +53,7 @@ class MemoryScannerTab(BaseTab):
         self.output_widget = output_widget
         self.is_scanning = False
         self.processes = []
+        self._current_scanner_v2 = None  # V2 扫描器实例
         super().__init__(parent, manager, "🔬 内存扫描")
 
     def setup_ui(self):
@@ -126,8 +133,8 @@ class MemoryScannerTab(BaseTab):
         ttk.Button(btn_frame, text="取消", command=self.deselect_all_categories, width=6).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="推荐", command=self.select_recommended, width=6).pack(side=tk.LEFT, padx=2)
 
-        # 自定义搜索区域
-        custom_frame = ttk.LabelFrame(self.frame, text="自定义字符串搜索", padding=5)
+        # 自定义搜索区域 (使用 memory_scanner_v2)
+        custom_frame = ttk.LabelFrame(self.frame, text="自定义字符串搜索 (V2 增强版)", padding=5)
         custom_frame.pack(fill=tk.X, padx=5, pady=5)
 
         custom_row1 = ttk.Frame(custom_frame)
@@ -138,13 +145,20 @@ class MemoryScannerTab(BaseTab):
         custom_entry = ttk.Entry(custom_row1, textvariable=self.custom_string_var, width=40)
         custom_entry.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
 
+        # 搜索模式选择
+        ttk.Label(custom_row1, text="模式:").pack(side=tk.LEFT, padx=(10, 5))
+        self.search_mode_var = tk.StringVar(value="full")
+        mode_combo = ttk.Combobox(custom_row1, textvariable=self.search_mode_var,
+                                   values=["full", "simple"], width=8, state="readonly")
+        mode_combo.pack(side=tk.LEFT, padx=2)
+
         ttk.Button(custom_row1, text="🔍 搜索选中进程", command=self.search_custom_string).pack(side=tk.LEFT, padx=5)
         ttk.Button(custom_row1, text="🔍 搜索全部进程", command=self.search_custom_all).pack(side=tk.LEFT, padx=2)
 
         custom_row2 = ttk.Frame(custom_frame)
         custom_row2.pack(fill=tk.X, pady=2)
 
-        ttk.Label(custom_row2, text="提示: 直接输入IP、域名、关键字等，支持多个(逗号分隔)，如: 192.168.1.1,evil.com,password",
+        ttk.Label(custom_row2, text="模式说明: full=全面(UTF-8+UTF-16+大小写), simple=简单(仅UTF-8,区分大小写,与Go版一致)",
                   foreground='#666').pack(anchor=tk.W)
 
         # 操作按钮
@@ -162,17 +176,34 @@ class MemoryScannerTab(BaseTab):
         ttk.Button(action_frame, text="🧹 清空结果", command=self.clear_results).pack(side=tk.LEFT, padx=3)
         ttk.Button(action_frame, text="💾 导出结果", command=self.export_results).pack(side=tk.LEFT, padx=3)
 
-        # 进度条
-        progress_frame = ttk.Frame(self.frame)
-        progress_frame.pack(fill=tk.X, padx=5, pady=2)
+        # 进度条区域 - 更加醒目
+        progress_frame = ttk.LabelFrame(self.frame, text="扫描进度", padding=5)
+        progress_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行：进度条和百分比
+        progress_row1 = ttk.Frame(progress_frame)
+        progress_row1.pack(fill=tk.X, pady=(0, 3))
 
         self.progress_var = tk.DoubleVar(value=0)
-        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var,
-                                            maximum=100, mode='determinate')
+        self.progress_bar = ttk.Progressbar(progress_row1, variable=self.progress_var,
+                                            maximum=100, mode='determinate', length=400)
         self.progress_bar.pack(fill=tk.X, side=tk.LEFT, expand=True, padx=(0, 10))
 
-        self.progress_label = ttk.Label(progress_frame, text="就绪", width=40)
-        self.progress_label.pack(side=tk.RIGHT)
+        # 百分比标签
+        self.percent_label = ttk.Label(progress_row1, text="0%", font=('Consolas', 10, 'bold'), width=6)
+        self.percent_label.pack(side=tk.RIGHT)
+
+        # 第二行：当前扫描状态
+        progress_row2 = ttk.Frame(progress_frame)
+        progress_row2.pack(fill=tk.X)
+
+        ttk.Label(progress_row2, text="状态:", foreground='#666').pack(side=tk.LEFT)
+        self.progress_label = ttk.Label(progress_row2, text="就绪", foreground='#333')
+        self.progress_label.pack(side=tk.LEFT, padx=5)
+
+        # 已扫描/总数
+        self.scan_count_label = ttk.Label(progress_row2, text="", foreground='#666')
+        self.scan_count_label.pack(side=tk.RIGHT)
 
         # 结果列表
         result_frame = ttk.LabelFrame(self.frame, text="扫描结果", padding=5)
@@ -368,10 +399,16 @@ class MemoryScannerTab(BaseTab):
                 if self.manager.is_cancelled:
                     break
 
-                # 更新进度
-                self.safe_after(lambda p=(i+1)/total*100: self.progress_var.set(p))
+                # 计算进度百分比
+                progress = (i + 1) / total * 100
+
+                # 更新进度条和百分比
+                self.safe_after(lambda p=progress: self.progress_var.set(p))
+                self.safe_after(lambda p=progress: self.percent_label.configure(text=f"{p:.0f}%"))
                 self.safe_after(lambda n=proc['name'], pid=proc['pid']:
                     self.progress_label.configure(text=f"扫描: {n} (PID: {pid})"))
+                self.safe_after(lambda cur=i+1, tot=total:
+                    self.scan_count_label.configure(text=f"进度: {cur}/{tot}"))
 
                 try:
                     results = self.manager.scan_process(
@@ -412,7 +449,9 @@ class MemoryScannerTab(BaseTab):
         self.is_scanning = False
         self.cancel_btn.configure(state='disabled')
         self.progress_var.set(100)
+        self.percent_label.configure(text="100%")
         self.progress_label.configure(text="扫描完成")
+        self.scan_count_label.configure(text="")
 
         summary = self.manager.get_summary()
         self.status_label.configure(
@@ -436,6 +475,9 @@ class MemoryScannerTab(BaseTab):
         """取消扫描"""
         if self.is_scanning:
             self.manager.cancel()
+            # 同时取消 V2 扫描器（如果存在）
+            if hasattr(self, '_current_scanner_v2') and self._current_scanner_v2:
+                self._current_scanner_v2.cancel()
             self.log("⏹ 已取消扫描", self.output_widget)
 
     def clear_results(self):
@@ -444,7 +486,9 @@ class MemoryScannerTab(BaseTab):
             self.tree.delete(item)
         self.manager.results = []
         self.progress_var.set(0)
+        self.percent_label.configure(text="0%")
         self.progress_label.configure(text="就绪")
+        self.scan_count_label.configure(text="")
         self.status_label.configure(text="状态: 就绪 | 选择进程后开始扫描")
 
     def show_detail(self):
@@ -551,7 +595,7 @@ class MemoryScannerTab(BaseTab):
         self._start_custom_search(self.processes)
 
     def _start_custom_search(self, processes):
-        """开始自定义字符串搜索"""
+        """开始自定义字符串搜索 (使用 MemoryScannerV2)"""
         search_str = self.custom_string_var.get().strip()
         if not search_str:
             messagebox.showwarning("提示", "请输入要搜索的字符串")
@@ -567,6 +611,10 @@ class MemoryScannerTab(BaseTab):
             messagebox.showwarning("提示", "请输入有效的搜索字符串")
             return
 
+        # 获取搜索模式
+        search_mode = self.search_mode_var.get()
+        mode_desc = "简单模式 (UTF-8, 区分大小写)" if search_mode == "simple" else "全面模式 (UTF-8 + UTF-16LE + 大小写)"
+
         self.is_scanning = True
         self.cancel_btn.configure(state='normal')
         self.progress_var.set(0)
@@ -576,61 +624,89 @@ class MemoryScannerTab(BaseTab):
             self.tree.delete(item)
         self.manager.results = []
 
-        self.log(f"🔍 开始自定义搜索: {', '.join(search_terms)}", self.output_widget)
+        self.log(f"🔍 开始自定义搜索 (V2 增强版)", self.output_widget)
+        self.log(f"  搜索字符串: {', '.join(search_terms)}", self.output_widget)
+        self.log(f"  搜索模式: {mode_desc}", self.output_widget)
         self.log(f"  搜索 {len(processes)} 个进程...", self.output_widget)
+
+        # 创建 V2 扫描器实例
+        scanner_v2 = MemoryScannerV2()
+        self._current_scanner_v2 = scanner_v2  # 保存引用以便取消
+
+        # 检查 SeDebugPrivilege
+        if scanner_v2.is_debug_privilege_enabled():
+            self.log(f"  ✓ SeDebugPrivilege 已启用", self.output_widget)
+        else:
+            self.log(f"  ⚠ SeDebugPrivilege 未启用（可能需要管理员权限）", self.output_widget)
 
         # 用于收集所有结果的列表
         all_results = []
 
+        # 构建 PID 列表
+        target_pids = {proc['pid'] for proc in processes}
+
         def search():
-            import re
-
             total = len(processes)
+            total_ops = total * len(search_terms)
+            processed = 0
 
-            for i, proc in enumerate(processes):
-                if self.manager.is_cancelled:
+            def progress_callback(msg):
+                # 更新进度标签
+                self.safe_after(lambda m=msg: self.progress_label.configure(text=m[:50]))
+
+            # 对每个搜索词进行搜索
+            for term_idx, term in enumerate(search_terms):
+                if scanner_v2.is_cancelled:
                     break
 
-                # 更新进度
-                self.safe_after(lambda p=(i+1)/total*100: self.progress_var.set(p))
-                self.safe_after(lambda n=proc['name'], pid=proc['pid']:
-                    self.progress_label.configure(text=f"搜索: {n} (PID: {pid})"))
+                self.safe_after(lambda t=term: self.log(f"  → 搜索: {t}", self.output_widget))
 
-                try:
-                    # 构建自定义正则模式
-                    patterns = {}
-                    for term in search_terms:
-                        # 转义特殊字符，使其作为普通字符串搜索
-                        escaped = re.escape(term)
-                        patterns[term] = escaped.encode('utf-8')
+                # 遍历每个进程
+                for i, proc in enumerate(processes):
+                    if scanner_v2.is_cancelled:
+                        break
 
-                    results = self.manager.scan_process(
-                        proc['pid'], proc['name'],
-                        categories=[],  # 不使用预定义类别
-                        custom_patterns=patterns
-                    )
+                    pid = proc['pid']
+                    name = proc['name']
 
-                    # 修改结果的类别显示并收集结果
-                    for r in results:
-                        r.category = 'custom_search'
-                        r.risk_level = 'high'  # 自定义搜索结果标记为高风险
-                        # 复制结果数据到字典，避免闭包问题
-                        result_data = {
-                            'process_name': r.process_name,
-                            'pid': r.pid,
-                            'value': r.value,
-                            'address': r.address,
-                            'context': r.context,
-                            'category': r.category,
-                            'risk_level': r.risk_level
-                        }
-                        all_results.append(result_data)
-                        # 使用字典数据添加到 UI
-                        self.safe_after(self._add_custom_result_dict, result_data)
+                    # 计算总进度
+                    current_op = term_idx * total + i + 1
+                    progress = current_op / total_ops * 100
 
-                except Exception as e:
-                    self.safe_after(lambda n=proc['name'], err=str(e):
-                        self.log(f"  ⚠️ {n}: {err}", self.output_widget))
+                    # 更新进度条和百分比
+                    self.safe_after(lambda p=progress: self.progress_var.set(p))
+                    self.safe_after(lambda p=progress: self.percent_label.configure(text=f"{p:.0f}%"))
+                    self.safe_after(lambda n=name, p=pid:
+                        self.progress_label.configure(text=f"搜索: {n} (PID: {p})"))
+                    self.safe_after(lambda cur=current_op, tot=total_ops:
+                        self.scan_count_label.configure(text=f"进度: {cur}/{tot}"))
+
+                    try:
+                        # 使用 V2 扫描器搜索单个进程
+                        results = scanner_v2.search_string(
+                            term,
+                            target_pid=pid,
+                            progress_callback=None,  # 不使用回调避免过多输出
+                            search_mode=search_mode
+                        )
+
+                        # 添加结果到 UI
+                        for r in results:
+                            result_data = {
+                                'process_name': r.process_name,
+                                'pid': r.pid,
+                                'value': r.match_content,
+                                'address': r.match_address,
+                                'path': r.process_path,
+                                'network': r.network_connections,
+                                'search_term': term
+                            }
+                            all_results.append(result_data)
+                            self.safe_after(self._add_v2_result, result_data)
+
+                    except Exception as e:
+                        self.safe_after(lambda n=name, err=str(e):
+                            self.log(f"  ⚠️ {n}: {err}", self.output_widget))
 
             self.safe_after(lambda: self._custom_search_complete(len(all_results)))
 
@@ -647,6 +723,30 @@ class MemoryScannerTab(BaseTab):
         )
         self.tree.insert('', tk.END, values=values, tags=('high',))
         self.manager.results.append(result)
+
+    def _add_v2_result(self, result_data):
+        """添加 V2 扫描器结果"""
+        values = (
+            f"{result_data['process_name']} ({result_data['pid']})",
+            f"搜索: {result_data.get('search_term', '自定义')}",
+            "命中",
+            result_data['value'][:100] if result_data['value'] else '',
+            hex(result_data['address']) if result_data['address'] else '0x0'
+        )
+        self.tree.insert('', tk.END, values=values, tags=('high',))
+
+        # 创建兼容的 ScanResult 对象以便导出
+        from memory_scanner import ScanResult
+        scan_result = ScanResult(
+            pid=result_data['pid'],
+            process_name=result_data['process_name'],
+            category='custom_search',
+            value=result_data['value'],
+            context=f"路径: {result_data.get('path', '')}\n网络: {result_data.get('network', '')}",
+            address=result_data['address'],
+            risk_level='high'
+        )
+        self.manager.results.append(scan_result)
 
     def _add_custom_result_dict(self, result_data):
         """添加自定义搜索结果（字典版本，用于线程安全）"""
@@ -678,7 +778,9 @@ class MemoryScannerTab(BaseTab):
         self.is_scanning = False
         self.cancel_btn.configure(state='disabled')
         self.progress_var.set(100)
+        self.percent_label.configure(text="100%")
         self.progress_label.configure(text="搜索完成")
+        self.scan_count_label.configure(text="")
 
         self.status_label.configure(text=f"状态: 搜索完成 | 共找到 {count} 个匹配项")
         self.log(f"✅ 搜索完成! 共找到 {count} 个匹配项", self.output_widget)

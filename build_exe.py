@@ -134,15 +134,14 @@ a = Analysis(
         # 可选: Yara
         'yara',
 
-        # 项目模块 - GUI
+        # 项目模块 - GUI (已移除: procmon_tab, persistence_tab, sandbox_tab, file_monitor_tab -> sandbox_project)
         'gui', 'gui.tabs', 'gui.main_window',
         'gui.tabs.base_tab', 'gui.tabs.process_tab', 'gui.tabs.process_tree_tab',
         'gui.tabs.network_tab', 'gui.tabs.dll_tab', 'gui.tabs.handle_tab',
-        'gui.tabs.dump_tab', 'gui.tabs.procmon_tab', 'gui.tabs.security_tab',
+        'gui.tabs.dump_tab', 'gui.tabs.security_tab',
         'gui.tabs.hash_tab', 'gui.tabs.file_locker_tab', 'gui.tabs.memory_scanner_tab',
         'gui.tabs.yara_tab', 'gui.tabs.process_trace_tab', 'gui.tabs.eventlog_tab',
-        'gui.tabs.persistence_tab', 'gui.tabs.user_audit_tab', 'gui.tabs.sandbox_tab',
-        'gui.tabs.file_monitor_tab',
+        'gui.tabs.user_audit_tab',
 
         # 项目模块 - utils
         'utils', 'utils.network', 'utils.filesystem', 'utils.permissions',
@@ -153,13 +152,13 @@ a = Analysis(
         'persistence.scheduled_task_detector', 'persistence.service_detector',
         'persistence.wmi_detector', 'persistence.system_detector', 'persistence.browser_detector',
 
-        # 项目模块 - managers
+        # 项目模块 - managers (已移除: monitor_manager, sandbox_manager -> sandbox_project)
         'console_logger', 'constants', 'exceptions', 'debug_console',
         'process_manager', 'network_manager', 'dll_manager', 'handle_manager',
-        'dump_manager', 'monitor_manager', 'security_manager', 'hash_manager',
-        'file_locker', 'memory_scanner', 'yara_scanner', 'threat_intel',
+        'dump_manager', 'security_manager', 'hash_manager',
+        'file_locker', 'memory_scanner', 'memory_scanner_v2', 'yara_scanner', 'threat_intel',
         'process_history_manager', 'eventlog_manager', 'user_audit_manager',
-        'sandbox_manager', 'report_generator', 'analysis_manager',
+        'report_generator', 'analysis_manager',
 
         # 简化版 GUI (备用)
         'sysmon_simple_gui',
